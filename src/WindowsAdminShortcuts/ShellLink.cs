@@ -5,6 +5,8 @@ namespace WindowsAdminShortcuts;
 
 internal static class ShellLink
 {
+    internal const uint RunAsUserFlag = 0x00002000;
+
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]
     private class ShellLinkObject
@@ -49,31 +51,125 @@ internal static class ShellLink
         void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string fileName);
     }
 
-    public static void Create(
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("45E2B4AE-B1C3-11D0-B92F-00A0C90312E1")]
+    private interface IShellLinkDataList
+    {
+        void AddDataBlock(IntPtr dataBlock);
+        void CopyDataBlock(uint signature, out IntPtr dataBlock);
+        void RemoveDataBlock(uint signature);
+        void GetFlags(out uint flags);
+        void SetFlags(uint flags);
+    }
+
+    internal sealed record Inspection(string IconPath, int IconIndex, uint Flags);
+
+    internal static string? Create(
         string shortcutPath,
         string targetPath,
         string arguments,
         string description,
         string workingDirectory,
         string iconPath,
-        int iconIndex)
+        bool runAsAdministrator)
     {
         if (!OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException("Создание ярлыков поддерживается только в Windows.");
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(shortcutPath)
-            ?? throw new InvalidOperationException("Не удалось определить папку ярлыка."));
+        string directory = Path.GetDirectoryName(shortcutPath)
+            ?? throw new InvalidOperationException("Не удалось определить папку ярлыка.");
+        Directory.CreateDirectory(directory);
 
-        var shellLink = (IShellLinkW)new ShellLinkObject();
-        shellLink.SetPath(targetPath);
-        shellLink.SetArguments(arguments);
-        shellLink.SetDescription(description);
-        shellLink.SetWorkingDirectory(workingDirectory);
-        shellLink.SetIconLocation(iconPath, iconIndex);
-        shellLink.SetShowCmd(1);
+        string? backupPath = null;
+        if (File.Exists(shortcutPath))
+        {
+            backupPath = $"{shortcutPath}.backup-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
+            File.Copy(shortcutPath, backupPath, overwrite: false);
+        }
 
-        ((IPersistFile)shellLink).Save(shortcutPath, true);
+        object shellLinkObject = new ShellLinkObject();
+        try
+        {
+            var shellLink = (IShellLinkW)shellLinkObject;
+            shellLink.SetPath(targetPath);
+            shellLink.SetArguments(arguments);
+            shellLink.SetDescription(description);
+            shellLink.SetWorkingDirectory(workingDirectory);
+            if (!string.IsNullOrWhiteSpace(iconPath))
+            {
+                shellLink.SetIconLocation(iconPath, 0);
+            }
+            if (runAsAdministrator)
+            {
+                var dataList = (IShellLinkDataList)shellLinkObject;
+                dataList.GetFlags(out uint flags);
+                dataList.SetFlags(flags | RunAsUserFlag);
+            }
+            shellLink.SetShowCmd(1);
+
+            ((IPersistFile)shellLink).Save(shortcutPath, true);
+            if (!File.Exists(shortcutPath))
+            {
+                throw new IOException($"Windows не создала ярлык: {shortcutPath}");
+            }
+
+            return backupPath;
+        }
+        catch (Exception createException)
+        {
+            try
+            {
+                if (backupPath is not null)
+                {
+                    File.Copy(backupPath, shortcutPath, overwrite: true);
+                }
+                else if (File.Exists(shortcutPath))
+                {
+                    File.Delete(shortcutPath);
+                }
+            }
+            catch (Exception restoreException)
+            {
+                throw new AggregateException(
+                    $"Ярлык не создан, исходный файл не восстановлен: {shortcutPath}",
+                    createException,
+                    restoreException);
+            }
+
+            throw;
+        }
+        finally
+        {
+            if (Marshal.IsComObject(shellLinkObject))
+            {
+                Marshal.FinalReleaseComObject(shellLinkObject);
+            }
+        }
+    }
+
+    internal static Inspection Inspect(string shortcutPath)
+    {
+        object shellLinkObject = new ShellLinkObject();
+        try
+        {
+            ((IPersistFile)shellLinkObject).Load(shortcutPath, 0);
+            var iconPath = new StringBuilder(32768);
+            ((IShellLinkW)shellLinkObject).GetIconLocation(
+                iconPath,
+                iconPath.Capacity,
+                out int iconIndex);
+            ((IShellLinkDataList)shellLinkObject).GetFlags(out uint flags);
+            return new Inspection(iconPath.ToString(), iconIndex, flags);
+        }
+        finally
+        {
+            if (Marshal.IsComObject(shellLinkObject))
+            {
+                Marshal.FinalReleaseComObject(shellLinkObject);
+            }
+        }
     }
 }

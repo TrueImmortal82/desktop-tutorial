@@ -24,10 +24,13 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore src/WindowsAdminShortcuts/WindowsAdminShortcuts.csproj
+        run: dotnet restore WindowsAdminShortcuts.sln
 
       - name: Build
-        run: dotnet build src/WindowsAdminShortcuts/WindowsAdminShortcuts.csproj --configuration Release --no-restore
+        run: dotnet build WindowsAdminShortcuts.sln --configuration Release --no-restore
+
+      - name: Run invariant tests
+        run: dotnet run --project tests/WindowsAdminShortcuts.Tests/WindowsAdminShortcuts.Tests.csproj --configuration Release --no-build
 
       - name: Publish single-file EXE
         run: >-
@@ -36,12 +39,20 @@ jobs:
           --runtime win-x64
           --self-contained true
           -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
           -p:EnableCompressionInSingleFile=true
           --output dist
 
-      - name: Add launcher BAT
+      - name: Add and verify launcher BAT
         shell: pwsh
-        run: Copy-Item Start-WindowsAdminShortcuts.bat dist/Start-WindowsAdminShortcuts.bat
+        run: |
+          Copy-Item Start-WindowsAdminShortcuts.bat dist/Start-WindowsAdminShortcuts.bat
+          $bytes = [IO.File]::ReadAllBytes("dist/Start-WindowsAdminShortcuts.bat")
+          for ($i = 0; $i -lt $bytes.Length; $i++) {
+            if ($bytes[$i] -eq 10 -and ($i -eq 0 -or $bytes[$i - 1] -ne 13)) {
+              throw "Launcher BAT contains LF without CRLF."
+            }
+          }
 
       - name: Upload application package
         uses: actions/upload-artifact@v4
