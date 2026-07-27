@@ -39,9 +39,15 @@ jobs:
           -p:EnableCompressionInSingleFile=true
           --output dist
 
-      - name: Upload executable
+      - name: Add launcher BAT
+        shell: pwsh
+        run: Copy-Item Start-WindowsAdminShortcuts.bat dist/Start-WindowsAdminShortcuts.bat
+
+      - name: Upload application package
         uses: actions/upload-artifact@v4
         with:
           name: WindowsAdminShortcuts-win-x64
-          path: dist/WindowsAdminShortcuts.exe
+          path: |
+            dist/WindowsAdminShortcuts.exe
+            dist/Start-WindowsAdminShortcuts.bat
           if-no-files-found: error
