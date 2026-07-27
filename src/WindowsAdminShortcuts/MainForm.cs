@@ -236,7 +236,6 @@ internal sealed class MainForm : Form
         _shortcutList.IntegralHeight = false;
         _shortcutList.HorizontalScrollbar = true;
         _shortcutList.ScrollAlwaysVisible = true;
-        _shortcutList.MinimumSize = new Size(0, 220);
         _shortcutList.BorderStyle = BorderStyle.FixedSingle;
         _shortcutList.BackColor = Color.White;
         _shortcutList.Margin = new Padding(0, 8, 0, 10);
