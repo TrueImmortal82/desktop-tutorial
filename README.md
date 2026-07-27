@@ -1,5 +1,54 @@
-# Welcome to GitHub Desktop!
+# Windows Admin Shortcuts
 
-This is your README. READMEs are where you can communicate what your project is and how to use it.
+Небольшое нативное приложение для Windows 10/11, которое создаёт на рабочем столе системные ярлыки:
 
-Write your name on line 6, save it, and then head back to GitHub Desktop.
+- **Администрирование**
+- **Панель управления**
+- **Планировщик заданий**
+- **Диспетчер устройств**
+
+Приложение также умеет удалять созданные ярлыки и открывать папку рабочего стола.
+
+## Особенности
+
+- не требует прав администратора;
+- работает для текущего пользователя;
+- не использует сторонние библиотеки;
+- создаёт настоящие `.lnk` через Windows Shell COM API;
+- поддерживает Windows 10 и Windows 11;
+- GitHub Actions автоматически собирает один самодостаточный `WindowsAdminShortcuts.exe` для Windows x64.
+
+## Скачать готовый EXE
+
+1. Открой вкладку **Actions**.
+2. Выбери последний успешный запуск `Build Windows application`.
+3. Внизу страницы скачай артефакт `WindowsAdminShortcuts-win-x64`.
+4. Распакуй архив и запусти `WindowsAdminShortcuts.exe`.
+
+## Локальная сборка
+
+Требуется .NET 8 SDK.
+
+```powershell
+.\build.ps1
+```
+
+Готовый файл появится здесь:
+
+```text
+dist\WindowsAdminShortcuts.exe
+```
+
+## Структура
+
+```text
+src/WindowsAdminShortcuts/  исходный код WinForms
+.github/workflows/build.yml  автоматическая Windows-сборка
+build.ps1                    локальная публикация single-file EXE
+```
+
+## Автор
+
+Владислав Наречев.
+
+Все права сохранены за автором.
