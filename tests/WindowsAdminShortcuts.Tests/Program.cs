@@ -11,6 +11,8 @@ var tests = new (string Name, Action Run)[]
     ("Win+P script creation and backup", TestWinPLauncher),
     ("Native Shell link creation", TestShellLink),
     ("Launcher BAT command parsing", TestLauncherBat),
+    ("Application icon and AS IS license", TestApplicationBrandingAndLicense),
+    ("Settings, localization and themes", TestSettingsLocalizationAndThemes),
     ("Responsive main window layout", TestMainWindow),
     ("Repository invariants", TestRepositoryInvariants)
 };
@@ -347,6 +349,150 @@ static void TestLauncherBat()
     }
 }
 
+static void TestApplicationBrandingAndLicense()
+{
+    string root = FindRepositoryRoot();
+    string licensePath = Path.Combine(root, "LICENSE.txt");
+    string iconPath = Path.Combine(
+        root,
+        "src",
+        "WindowsAdminShortcuts",
+        "Assets",
+        "WindowsAdminShortcuts.ico");
+
+    Assert(File.Exists(licensePath), "External license file is missing.");
+    Assert(File.Exists(iconPath), "Application icon file is missing.");
+    string externalLicense = File.ReadAllText(licensePath, Encoding.UTF8);
+    AssertEqual(externalLicense, LicenseAgreementService.LicenseText);
+    Assert(
+        externalLicense.Contains("AS IS", StringComparison.Ordinal) &&
+        externalLicense.Contains("WITHOUT WARRANTY", StringComparison.Ordinal),
+        "License does not contain the required AS IS warranty disclaimer.");
+    Assert(
+        externalLicense.Contains("ENGLISH", StringComparison.Ordinal) &&
+        externalLicense.Contains("O‘ZBEKCHA", StringComparison.Ordinal),
+        "License is not available in all three interface languages.");
+    Assert(
+        !externalLicense.Contains(string.Concat("Vlad", "islav"), StringComparison.OrdinalIgnoreCase) &&
+        !externalLicense.Contains(string.Concat("Влади", "слав"), StringComparison.OrdinalIgnoreCase),
+        "License contains a real personal name.");
+    AssertEqual(64, LicenseAgreementService.LicenseHash.Length);
+
+    string acceptanceDirectory = Path.Combine(
+        Path.GetTempPath(),
+        $"WindowsAdminShortcuts-license-test-{Guid.NewGuid():N}");
+    try
+    {
+        Assert(
+            !LicenseAgreementService.IsAccepted(acceptanceDirectory),
+            "Missing acceptance must not be treated as accepted.");
+        Directory.CreateDirectory(acceptanceDirectory);
+        File.WriteAllText(
+            Path.Combine(acceptanceDirectory, LicenseAgreementService.AcceptanceFileName),
+            "INVALID",
+            Encoding.UTF8);
+        Assert(
+            !LicenseAgreementService.IsAccepted(acceptanceDirectory),
+            "An unrelated license hash must not be accepted.");
+        LicenseAgreementService.RecordAcceptance(acceptanceDirectory);
+        Assert(
+            LicenseAgreementService.IsAccepted(acceptanceDirectory),
+            "Recorded license acceptance was not recognized.");
+    }
+    finally
+    {
+        Directory.Delete(acceptanceDirectory, recursive: true);
+    }
+
+    using (var icon = AppIcon.Load())
+    {
+        Assert(icon.Width > 0 && icon.Height > 0, "Embedded application icon is invalid.");
+    }
+
+    using FileStream iconStream = File.OpenRead(iconPath);
+    using var reader = new BinaryReader(iconStream);
+    AssertEqual((ushort)0, reader.ReadUInt16());
+    AssertEqual((ushort)1, reader.ReadUInt16());
+    ushort imageCount = reader.ReadUInt16();
+    AssertEqual((ushort)9, imageCount);
+    var sizes = new List<int>();
+    for (int index = 0; index < imageCount; index++)
+    {
+        byte width = reader.ReadByte();
+        byte height = reader.ReadByte();
+        sizes.Add(width == 0 ? 256 : width);
+        AssertEqual(width, height);
+        reader.ReadByte();
+        reader.ReadByte();
+        AssertEqual((ushort)1, reader.ReadUInt16());
+        AssertEqual((ushort)32, reader.ReadUInt16());
+        Assert(reader.ReadUInt32() > 0, "ICO image payload is empty.");
+        Assert(reader.ReadUInt32() >= 6 + (16 * imageCount), "ICO image offset is invalid.");
+    }
+
+    AssertEqual(
+        "16,20,24,32,40,48,64,128,256",
+        string.Join(",", sizes));
+}
+
+static void TestSettingsLocalizationAndThemes()
+{
+    string directory = Path.Combine(
+        Path.GetTempPath(),
+        $"WindowsAdminShortcuts-settings-test-{Guid.NewGuid():N}");
+    try
+    {
+        var expected = new AppSettings(AppLanguage.Uzbek, AppTheme.Dark);
+        AppSettingsService.Save(directory, expected);
+        AssertEqual(expected, AppSettingsService.Load(directory));
+
+        File.WriteAllText(
+            Path.Combine(directory, AppSettingsService.SettingsFileName),
+            """{"Language":"Unknown","Theme":"Dark"}""",
+            Encoding.UTF8);
+        AssertThrows<InvalidDataException>(() => AppSettingsService.Load(directory));
+
+        IReadOnlyList<ShortcutDefinition> catalog = AdminShortcutCatalog.Create();
+        foreach (ShortcutDefinition shortcut in catalog)
+        {
+            Assert(
+                UiLocalization.HasCatalogTranslation(shortcut.Category),
+                $"Category has no localization: {shortcut.Category}");
+            Assert(
+                UiLocalization.HasCatalogTranslation(shortcut.DisplayName),
+                $"Shortcut has no localization: {shortcut.DisplayName}");
+        }
+
+        foreach (AppLanguage language in Enum.GetValues<AppLanguage>())
+        {
+            AppSettingsService.UseTransient(new AppSettings(language, AppTheme.Light));
+            Assert(
+                !string.IsNullOrWhiteSpace(
+                    UiLocalization.Text("Русский", "English", "O‘zbekcha")),
+                $"Interface text is missing for {language}.");
+            Assert(
+                !string.IsNullOrWhiteSpace(
+                    UiLocalization.CatalogText("Управление компьютером")),
+                $"Catalog text is missing for {language}.");
+        }
+
+        Assert(
+            ThemePalette.Light.Background != ThemePalette.Dark.Background &&
+            ThemePalette.Light.Text != ThemePalette.Dark.Text &&
+            ThemePalette.Light.Accent != ThemePalette.Dark.Accent,
+            "Light and dark palettes are not distinct.");
+    }
+    finally
+    {
+        AppSettingsService.UseTransient(
+            new AppSettings(AppLanguage.Russian, AppTheme.Light));
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
 static void TestMainWindow()
 {
     Exception? failure = null;
@@ -354,6 +500,8 @@ static void TestMainWindow()
     {
         try
         {
+            AppSettingsService.UseTransient(
+                new AppSettings(AppLanguage.Russian, AppTheme.Light));
             using var form = new MainForm();
             form.ShowInTaskbar = false;
             form.Location = new Point(-32000, -32000);
@@ -401,6 +549,14 @@ static void TestMainWindow()
             Assert(form.ClientSize.Width >= 900, "Main window is too narrow.");
             Assert(form.ClientSize.Height >= 640, "Main window is too short.");
             AssertNoInteractiveControlOverlaps(form);
+            LanguageSelectorControl? languageSelector =
+                FindControl<LanguageSelectorControl>(form);
+            ThemeToggleButton? themeToggle = FindControl<ThemeToggleButton>(form);
+            Assert(
+                languageSelector is not null &&
+                FindControls<ModernButton>(languageSelector).Count() == 3,
+                "RU/EN/UZ language buttons are missing.");
+            Assert(themeToggle is not null, "Sun/moon theme button is missing.");
 
             shortcutSections!.SelectedIndex = 1;
             Application.DoEvents();
@@ -423,9 +579,10 @@ static void TestMainWindow()
             Application.DoEvents();
 
             string? screenshotPath = Environment.GetEnvironmentVariable("WINDOWS_ADMIN_SCREENSHOT");
+            string? screenshotDirectory = null;
             if (!string.IsNullOrWhiteSpace(screenshotPath))
             {
-                string screenshotDirectory = Path.GetDirectoryName(screenshotPath)
+                screenshotDirectory = Path.GetDirectoryName(screenshotPath)
                     ?? throw new InvalidOperationException("Screenshot directory is missing.");
                 Directory.CreateDirectory(screenshotDirectory);
                 for (int tabIndex = 0; tabIndex < tabs.TabPages.Count; tabIndex++)
@@ -458,11 +615,78 @@ static void TestMainWindow()
                         screenshotDirectory,
                         $"{Path.GetFileNameWithoutExtension(screenshotPath)}-compact{Path.GetExtension(screenshotPath)}"));
                 form.Size = defaultSize;
+
+                tabs.SelectedIndex = 0;
+                shortcutSections.SelectedIndex = 0;
+                AppSettingsService.UseTransient(
+                    new AppSettings(AppLanguage.English, AppTheme.Dark));
+                Application.DoEvents();
+                AssertNoInteractiveControlOverlaps(form);
+                Assert(
+                    shortcuts.Items.Cast<object>().Any(item =>
+                        item.ToString()?.Contains("[System]", StringComparison.Ordinal) == true),
+                    "English catalog localization was not applied.");
+                SaveWindowScreenshot(
+                    form,
+                    GetPreviewVariantPath(screenshotPath, "dark"));
+
+                AppSettingsService.UseTransient(
+                    new AppSettings(AppLanguage.Uzbek, AppTheme.Light));
+                Application.DoEvents();
+                AssertNoInteractiveControlOverlaps(form);
+                Assert(
+                    shortcuts.Items.Cast<object>().Any(item =>
+                        item.ToString()?.Contains("[Tizim]", StringComparison.Ordinal) == true),
+                    "Uzbek catalog localization was not applied.");
+                SaveWindowScreenshot(
+                    form,
+                    GetPreviewVariantPath(screenshotPath, "uzbek"));
+
+                AppSettingsService.UseTransient(
+                    new AppSettings(AppLanguage.Russian, AppTheme.Light));
+                Application.DoEvents();
             }
 
             form.Hide();
-            AssertScaledMainWindowLayout(1.25F);
-            AssertScaledMainWindowLayout(1.50F);
+            AssertScaledMainWindowLayout(
+                1.25F,
+                new AppSettings(AppLanguage.Russian, AppTheme.Light));
+            AssertScaledMainWindowLayout(
+                1.50F,
+                new AppSettings(AppLanguage.Russian, AppTheme.Light));
+            AssertScaledMainWindowLayout(
+                1.25F,
+                new AppSettings(AppLanguage.English, AppTheme.Dark));
+            AssertScaledMainWindowLayout(
+                1.25F,
+                new AppSettings(AppLanguage.Uzbek, AppTheme.Light));
+
+            AppSettingsService.UseTransient(
+                new AppSettings(AppLanguage.Russian, AppTheme.Light));
+            using var agreement = new LicenseAgreementForm(LicenseAgreementService.LicenseText)
+            {
+                ShowInTaskbar = false,
+                Location = new Point(-32000, -32000)
+            };
+            agreement.Show();
+            Application.DoEvents();
+            agreement.PerformLayout();
+            TextBox? licenseText = FindControlByName<TextBox>(agreement, "LicenseText");
+            CheckBox? acceptance = FindControlByName<CheckBox>(agreement, "LicenseAcceptance");
+            Assert(licenseText is not null && licenseText.Multiline, "License text box is missing.");
+            Assert(acceptance is not null, "License acceptance checkbox is missing.");
+            AssertNoInteractiveControlOverlaps(agreement);
+            if (!string.IsNullOrWhiteSpace(screenshotPath) &&
+                screenshotDirectory is not null)
+            {
+                SaveWindowScreenshot(
+                    agreement,
+                    Path.Combine(
+                        screenshotDirectory,
+                        $"{Path.GetFileNameWithoutExtension(screenshotPath)}-license" +
+                        $"{Path.GetExtension(screenshotPath)}"));
+            }
+            agreement.Hide();
         }
         catch (Exception ex)
         {
@@ -479,8 +703,9 @@ static void TestMainWindow()
     }
 }
 
-static void AssertScaledMainWindowLayout(float scale)
+static void AssertScaledMainWindowLayout(float scale, AppSettings settings)
 {
+    AppSettingsService.UseTransient(settings);
     using var form = new MainForm
     {
         ShowInTaskbar = false,
@@ -570,6 +795,21 @@ static void SaveWindowScreenshot(Form form, string path)
     bitmap.Save(path);
 }
 
+static string GetPreviewVariantPath(string lightPath, string variant)
+{
+    string directory = Path.GetDirectoryName(lightPath)
+        ?? throw new InvalidOperationException("Screenshot directory is missing.");
+    string stem = Path.GetFileNameWithoutExtension(lightPath);
+    if (stem.EndsWith("-light", StringComparison.OrdinalIgnoreCase))
+    {
+        stem = stem[..^"-light".Length];
+    }
+
+    return Path.Combine(
+        directory,
+        $"{stem}-{variant}{Path.GetExtension(lightPath)}");
+}
+
 static void AssertRenderedClientArea(Bitmap bitmap)
 {
     var colors = new HashSet<int>();
@@ -606,6 +846,20 @@ static void TestRepositoryInvariants()
             "<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>",
             StringComparison.Ordinal),
         "Single-file publish must embed native runtime libraries.");
+    Assert(
+        project.Contains("<ApplicationIcon>Assets\\WindowsAdminShortcuts.ico</ApplicationIcon>", StringComparison.Ordinal),
+        "Application icon is not configured as the executable icon.");
+    Assert(
+        project.Contains("WindowsAdminShortcuts.LICENSE.txt", StringComparison.Ordinal),
+        "License is not embedded in the executable.");
+    Assert(
+        project.Contains("<Authors>True Immortal</Authors>", StringComparison.Ordinal),
+        "Executable author metadata must use only the public name.");
+    Assert(
+        project.Contains(
+            "<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>",
+            StringComparison.Ordinal),
+        "Published ProductVersion must not expose a stale source revision.");
 
     string sourceDirectory = Path.Combine(root, "src", "WindowsAdminShortcuts");
     int applicationRunCount = Directory
@@ -631,6 +885,65 @@ static void TestRepositoryInvariants()
     Assert(
         !winPSource.Contains("SendKeys", StringComparison.OrdinalIgnoreCase),
         "Keyboard emulation is not an allowed Win+P path.");
+
+    string programSource = File.ReadAllText(Path.Combine(sourceDirectory, "Program.cs"));
+    Assert(
+        programSource.Contains("LicenseAgreementService.EnsureAccepted()", StringComparison.Ordinal),
+        "Application startup does not enforce license acceptance.");
+    Assert(
+        programSource.Contains("AppSettingsService.Initialize()", StringComparison.Ordinal),
+        "Application startup does not load the canonical interface settings.");
+
+    string readme = File.ReadAllText(Path.Combine(root, "README.md"));
+    Assert(
+        readme.Contains("## Русский", StringComparison.Ordinal) &&
+        readme.Contains("## English", StringComparison.Ordinal) &&
+        readme.Contains("## O‘zbekcha", StringComparison.Ordinal),
+        "README does not contain instructions in all three languages.");
+    Assert(
+        readme.Contains("docs/screenshots/windows-admin-center-light.png", StringComparison.Ordinal) &&
+        readme.Contains("docs/screenshots/windows-admin-center-dark.png", StringComparison.Ordinal),
+        "README does not reference both real UI previews.");
+    foreach (string preview in new[]
+    {
+        "windows-admin-center-light.png",
+        "windows-admin-center-dark.png",
+        "windows-admin-center-uzbek.png",
+        "admin-shortcut-icons.png"
+    })
+    {
+        Assert(
+            File.Exists(Path.Combine(root, "docs", "screenshots", preview)),
+            $"README preview is missing: {preview}");
+    }
+
+    string workflow = File.ReadAllText(
+        Path.Combine(root, ".github", "workflows", "build.yml"));
+    Assert(
+        workflow.Contains("dist/LICENSE.txt", StringComparison.Ordinal),
+        "GitHub build artifact does not include LICENSE.txt.");
+
+    string[] publicSources = Directory
+        .EnumerateFiles(root, "*", SearchOption.AllDirectories)
+        .Where(path =>
+            !path.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+            !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+            !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+            !path.Contains($"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+            Path.GetExtension(path) is ".cs" or ".md" or ".txt" or ".csproj")
+        .ToArray();
+    foreach (string path in publicSources)
+    {
+        string contents = File.ReadAllText(path);
+        Assert(
+            !contents.Contains(
+                string.Concat("Vlad", "islav ", "Nare", "chev"),
+                StringComparison.OrdinalIgnoreCase) &&
+            !contents.Contains(
+                string.Concat("Влади", "слав ", "Наре", "чев"),
+                StringComparison.OrdinalIgnoreCase),
+            $"Real personal name remains in {path}.");
+    }
 }
 
 static T? FindControl<T>(Control root)

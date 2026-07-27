@@ -1,0 +1,168 @@
+WINDOWS ADMIN CENTER / WINDOWS ADMIN SHORTCUTS
+ЛИЦЕНЗИОННОЕ СОГЛАШЕНИЕ С КОНЕЧНЫМ ПОЛЬЗОВАТЕЛЕМ
+Версия 1.1 от 28 июля 2026 года
+
+Copyright (c) 2026 True Immortal.
+Все права защищены.
+
+1. ПРЕДОСТАВЛЕНИЕ ПРАВА ИСПОЛЬЗОВАНИЯ
+
+Правообладатель предоставляет пользователю неисключительное,
+непередаваемое право устанавливать и использовать неизменённую копию
+программы для личных и внутренних административных задач.
+
+Распространение программы допускается только в неизменённом виде вместе
+с полным текстом настоящего соглашения. Продажа, сублицензирование,
+коммерческое распространение изменённых версий и удаление сведений
+о правообладателе без письменного разрешения запрещены.
+
+2. СИСТЕМНЫЕ ИЗМЕНЕНИЯ
+
+Программа может запускаться с правами администратора, создавать и удалять
+ярлыки, изменять настройки обоев пользовательских профилей и переключать
+режим вывода изображения. Пользователь самостоятельно определяет допустимость
+этих операций, обеспечивает резервное копирование и проверяет выбранные цели,
+файлы и рабочие столы перед подтверждением действий.
+
+3. ПРЕДОСТАВЛЕНИЕ «КАК ЕСТЬ» / AS IS
+
+ПРОГРАММА ПРЕДОСТАВЛЯЕТСЯ «КАК ЕСТЬ» (AS IS), БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ,
+ПРЯМЫХ ИЛИ ПОДРАЗУМЕВАЕМЫХ, ВКЛЮЧАЯ, ПОМИМО ПРОЧЕГО, ГАРАНТИИ
+КОММЕРЧЕСКОЙ ПРИГОДНОСТИ, ПРИГОДНОСТИ ДЛЯ КОНКРЕТНОЙ ЦЕЛИ,
+БЕЗОШИБОЧНОЙ РАБОТЫ И НЕНАРУШЕНИЯ ПРАВ ТРЕТЬИХ ЛИЦ.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+4. ОГРАНИЧЕНИЕ ОТВЕТСТВЕННОСТИ
+
+В МАКСИМАЛЬНОЙ СТЕПЕНИ, РАЗРЕШЁННОЙ ПРИМЕНИМЫМ ЗАКОНОДАТЕЛЬСТВОМ,
+ПРАВООБЛАДАТЕЛЬ НЕ НЕСЁТ ОТВЕТСТВЕННОСТИ ЗА ПРЯМЫЕ, КОСВЕННЫЕ,
+СЛУЧАЙНЫЕ, СПЕЦИАЛЬНЫЕ ИЛИ ПОСЛЕДУЮЩИЕ УБЫТКИ, ПОТЕРЮ ДАННЫХ,
+НАСТРОЕК, ПРИБЫЛИ ИЛИ ВОЗМОЖНОСТИ ИСПОЛЬЗОВАНИЯ, ВОЗНИКШИЕ
+В РЕЗУЛЬТАТЕ УСТАНОВКИ, ЗАПУСКА ИЛИ НЕВОЗМОЖНОСТИ ЗАПУСКА ПРОГРАММЫ.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. СТОРОННИЕ НАИМЕНОВАНИЯ
+
+Windows и связанные системные инструменты являются продуктами и товарными
+знаками их соответствующих правообладателей. Программа не является продуктом
+Microsoft и не заявляет об аффилированности или одобрении с её стороны.
+
+6. ПРИНЯТИЕ УСЛОВИЙ
+
+Нажимая кнопку «Принимаю» или продолжая использовать программу, пользователь
+подтверждает, что прочитал настоящее соглашение, понимает последствия запуска
+административных операций и принимает все перечисленные условия.
+
+----------------------------------------------------------------------
+ENGLISH
+END USER LICENSE AGREEMENT
+Version 1.1 dated 28 July 2026
+
+Copyright (c) 2026 True Immortal.
+All rights reserved.
+
+1. LICENSE GRANT
+
+The copyright holder grants the user a non-exclusive, non-transferable right
+to install and use an unmodified copy of the software for personal and
+internal administrative tasks.
+
+The software may be redistributed only in unmodified form together with this
+complete agreement. Sale, sublicensing, commercial distribution of modified
+versions, and removal of copyright notices are prohibited without written
+permission.
+
+2. SYSTEM CHANGES
+
+The software may run with administrator privileges, create and remove
+shortcuts, change wallpaper settings in user profiles, and change the display
+projection mode. The user determines whether these actions are appropriate,
+maintains backups, and verifies selected targets, files, and desktops before
+confirming an operation.
+
+3. AS IS
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, ERROR-FREE OPERATION AND NONINFRINGEMENT.
+
+4. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL OR CONSEQUENTIAL DAMAGES, LOSS OF DATA, SETTINGS, PROFITS OR USE,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR ITS USE OR INABILITY TO USE IT.
+
+5. THIRD-PARTY NAMES
+
+Windows and related system tools are products and trademarks of their
+respective owners. This software is not a Microsoft product and does not
+claim affiliation with or endorsement by Microsoft.
+
+6. ACCEPTANCE
+
+By selecting Accept or continuing to use the software, the user confirms that
+this agreement has been read, the consequences of administrative operations
+are understood, and all terms are accepted.
+
+----------------------------------------------------------------------
+O‘ZBEKCHA
+YAKUNIY FOYDALANUVCHI LITSENZIYA KELISHUVI
+1.1-versiya, 2026-yil 28-iyul
+
+Copyright (c) 2026 True Immortal.
+Barcha huquqlar himoyalangan.
+
+1. FOYDALANISH HUQUQI
+
+Huquq egasi foydalanuvchiga dasturiy ta’minotning o‘zgartirilmagan nusxasini
+shaxsiy va ichki ma’muriy vazifalar uchun o‘rnatish va ishlatish bo‘yicha
+eksklyuziv bo‘lmagan, boshqa shaxsga o‘tkazilmaydigan huquq beradi.
+
+Dastur faqat o‘zgartirilmagan holda va ushbu kelishuvning to‘liq matni bilan
+birga tarqatilishi mumkin. Yozma ruxsatsiz sotish, sublitsenziyalash,
+o‘zgartirilgan versiyalarni tijoriy tarqatish va mualliflik ma’lumotlarini
+olib tashlash taqiqlanadi.
+
+2. TIZIM O‘ZGARISHLARI
+
+Dastur administrator huquqlari bilan ishga tushishi, yorliqlar yaratishi va
+o‘chirishi, foydalanuvchi profillarining fon rasmi sozlamalarini hamda ekran
+proyeksiyasi rejimini o‘zgartirishi mumkin. Foydalanuvchi ushbu amallarning
+maqbulligini mustaqil belgilaydi, zaxira nusxalarini saqlaydi va amalni
+tasdiqlashdan oldin tanlangan maqsadlar, fayllar hamda ish stollarini tekshiradi.
+
+3. AS IS / «QANDAY BO‘LSA, SHUNDAY»
+
+DASTUR «QANDAY BO‘LSA, SHUNDAY» (AS IS), HECH QANDAY OCHIQ YOKI NAZARDA
+TUTILGAN KAFOLATLARSIZ, JUMLADAN TIJORATGA YAROQLILIK, MUAYYAN MAQSADGA
+MUVOFIQLIK, XATOSIZ ISHLASH VA UCHINCHI SHAXSLAR HUQUQLARINI BUZMASLIK
+KAFOLATLARISIZ TAQDIM ETILADI.
+
+4. JAVOBGARLIKNI CHEKLASH
+
+AMALDAGI QONUN RUXSAT BERGAN ENG YUQORI DARAJADA HUQUQ EGASI DASTURNI
+O‘RNATISH, ISHLATISH YOKI ISHLATA OLMASLIK NATIJASIDA YUZAGA KELGAN TALAB,
+BEVOSITA, BILVOSITA, TASODIFIY, MAXSUS YOKI KEYINGI ZARARLAR, MA’LUMOTLAR,
+SOZLAMALAR, FOYDA YOKI FOYDALANISH IMKONIYATINING YO‘QOLISHI UCHUN
+JAVOBGAR BO‘LMAYDI.
+
+5. UCHINCHI TOMON NOMLARI
+
+Windows va tegishli tizim vositalari o‘z egalarining mahsulotlari va savdo
+belgilaridir. Ushbu dastur Microsoft mahsuloti emas va Microsoft bilan
+aloqadorlik yoki uning tasdig‘ini da’vo qilmaydi.
+
+6. SHARTLARNI QABUL QILISH
+
+«Qabul qilaman» tugmasini bosish yoki dasturdan foydalanishni davom ettirish
+orqali foydalanuvchi ushbu kelishuvni o‘qiganini, ma’muriy amallarning
+oqibatlarini tushunganini va barcha shartlarni qabul qilganini tasdiqlaydi.

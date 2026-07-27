@@ -11,13 +11,15 @@ internal sealed class MainForm : Form
     private readonly ComboBox _shortcutCategory = new();
     private readonly ComboBox _presetScope = CreateScopeCombo();
     private readonly ComboBox _customScope = CreateScopeCombo();
-    private readonly ComboBox _winPScope = CreateScopeCombo(defaultToAllUsers: true);
+    private readonly ComboBox _winPScope = CreateScopeCombo();
+    private readonly LanguageSelectorControl _languageSelector = new();
+    private readonly ThemeToggleButton _themeToggle = new();
+    private readonly ToolTip _toolTip = new();
     private readonly TextBox _customName = new();
     private readonly TextBox _customTarget = new();
     private readonly TextBox _customArguments = new();
     private readonly CheckBox _customRunAsAdministrator = new()
     {
-        Text = "Запускать от администратора",
         AutoSize = true,
         Checked = true
     };
@@ -28,8 +30,11 @@ internal sealed class MainForm : Form
     private readonly Label _statusLabel = new();
     private readonly Button _applyWallpaperButton;
     private readonly IReadOnlyList<ShortcutDefinition> _shortcuts;
+    private readonly IReadOnlyList<string> _shortcutCategories;
     private readonly HashSet<string> _checkedShortcutFiles = new(StringComparer.OrdinalIgnoreCase);
     private bool _updatingShortcutList;
+    private bool _updatingAppearanceSelectors;
+    private bool _statusIsError;
 
     public MainForm()
     {
@@ -38,17 +43,29 @@ internal sealed class MainForm : Form
         MinimumSize = new Size(940, 700);
         Size = new Size(1120, 820);
         Font = new Font("Segoe UI", 10F);
-        BackColor = Color.FromArgb(244, 247, 251);
         AutoScaleMode = AutoScaleMode.Dpi;
+        Icon = AppIcon.Load();
 
         _shortcuts = AdminShortcutCatalog.Create();
+        _shortcutCategories = _shortcuts
+            .Select(shortcut => shortcut.Category)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         foreach (ShortcutDefinition shortcut in _shortcuts)
         {
             _checkedShortcutFiles.Add(shortcut.FileName);
         }
-        _applyWallpaperButton = CreateButton("Применить для всех пользователей", ApplyWallpaperAsync, primary: true);
+        _applyWallpaperButton = CreateButton(
+            "Применить для всех пользователей",
+            "Apply for all users",
+            "Barcha foydalanuvchilarga qo‘llash",
+            ApplyWallpaperAsync,
+            primary: true);
 
+        InitializeSelectors();
         BuildInterface();
+        ApplyLocalizationAndTheme();
+        AppSettingsService.Changed += AppearanceChanged;
         RefreshShortcutState();
     }
 
@@ -56,7 +73,9 @@ internal sealed class MainForm : Form
     {
         if (disposing)
         {
+            AppSettingsService.Changed -= AppearanceChanged;
             _wallpaperPreview.Image?.Dispose();
+            _toolTip.Dispose();
         }
 
         base.Dispose(disposing);
@@ -77,11 +96,10 @@ internal sealed class MainForm : Form
 
         root.Controls.Add(BuildHeader(), 0, 0);
 
-        var tabs = new TabControl
+        var tabs = new PremiumTabControl
         {
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI Semibold", 10F),
-            Padding = new Point(18, 7),
             Margin = new Padding(0, 14, 0, 12)
         };
         tabs.TabPages.Add(BuildShortcutsTab());
@@ -91,14 +109,14 @@ internal sealed class MainForm : Form
 
         var statusPanel = new Panel
         {
+            Name = "StatusBar",
             Dock = DockStyle.Fill,
             Height = 36,
-            BackColor = Color.White,
             Padding = new Padding(12, 8, 12, 8)
         };
         _statusLabel.Dock = DockStyle.Fill;
-        _statusLabel.Text = "Готово к работе.";
-        _statusLabel.ForeColor = Color.FromArgb(62, 72, 88);
+        _statusLabel.Name = "Success";
+        UiLocalization.Attach(_statusLabel, "Готово к работе.", "Ready.", "Ishga tayyor.");
         statusPanel.Controls.Add(_statusLabel);
         root.Controls.Add(statusPanel, 0, 2);
 
@@ -118,38 +136,51 @@ internal sealed class MainForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        var title = new Label
+        var title = UiLocalization.Attach(new Label
         {
-            Text = "Windows Admin Center",
             AutoSize = true,
             Font = new Font("Segoe UI Semibold", 20F),
-            ForeColor = Color.FromArgb(28, 37, 51),
             Margin = Padding.Empty
-        };
+        }, "Windows Admin Center", "Windows Admin Center", "Windows Admin Center");
         header.Controls.Add(title, 0, 0);
 
-        var adminBadge = new Label
+        var headerActions = new FlowLayoutPanel
         {
-            Text = ElevationService.IsAdministrator() ? "Администратор" : "Без прав администратора",
             AutoSize = true,
-            BackColor = ElevationService.IsAdministrator()
-                ? Color.FromArgb(225, 244, 231)
-                : Color.FromArgb(253, 235, 235),
-            ForeColor = ElevationService.IsAdministrator()
-                ? Color.FromArgb(29, 107, 55)
-                : Color.FromArgb(161, 42, 42),
-            Padding = new Padding(12, 6, 12, 6),
-            Margin = new Padding(12, 3, 0, 0)
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Margin = Padding.Empty
         };
-        header.Controls.Add(adminBadge, 1, 0);
+        _languageSelector.Margin = new Padding(0, 1, 3, 0);
+        _languageSelector.SelectedLanguageChanged += ChangeLanguage;
+        headerActions.Controls.Add(_languageSelector);
+        _themeToggle.Margin = new Padding(0, 0, 10, 0);
+        _themeToggle.Click += ToggleTheme;
+        headerActions.Controls.Add(_themeToggle);
 
-        var subtitle = new Label
+        var adminBadge = UiLocalization.Attach(new Label
         {
-            Text = "Ярлыки, общие обои и Win+P — в одном проверяемом окне.",
+            Name = ElevationService.IsAdministrator() ? "Success" : "Warning",
             AutoSize = true,
-            ForeColor = Color.FromArgb(91, 102, 119),
+            Padding = new Padding(12, 6, 12, 6),
+            Margin = Padding.Empty
+        },
+            ElevationService.IsAdministrator() ? "Администратор" : "Без прав администратора",
+            ElevationService.IsAdministrator() ? "Administrator" : "Not elevated",
+            ElevationService.IsAdministrator() ? "Administrator" : "Administrator huquqisiz");
+        headerActions.Controls.Add(adminBadge);
+        header.Controls.Add(headerActions, 1, 0);
+
+        var subtitle = UiLocalization.Attach(new Label
+        {
+            Name = "Muted",
+            AutoSize = true,
             Margin = new Padding(0, 5, 0, 0)
-        };
+        },
+            "Ярлыки, общие обои и Win+P — в одном проверяемом окне.",
+            "Admin shortcuts, shared wallpaper and Win+P in one reliable window.",
+            "Administrator yorliqlari, umumiy fon va Win+P — bitta ishonchli oynada.");
         header.Controls.Add(subtitle, 0, 1);
         header.SetColumnSpan(subtitle, 2);
         return header;
@@ -157,19 +188,21 @@ internal sealed class MainForm : Form
 
     private TabPage BuildShortcutsTab()
     {
-        var tab = CreateTab("Ярлыки");
-        var sections = new TabControl
+        var tab = CreateTab("Ярлыки", "Shortcuts", "Yorliqlar");
+        var sections = new PremiumTabControl
         {
             Dock = DockStyle.Fill,
-            Padding = new Point(16, 6),
             Font = new Font("Segoe UI Semibold", 9.5F)
         };
 
-        var catalogPage = CreateTab($"Готовые ярлыки ({_shortcuts.Count})");
+        var catalogPage = CreateTab(
+            $"Готовые ярлыки ({_shortcuts.Count})",
+            $"Admin catalog ({_shortcuts.Count})",
+            $"Administrator katalogi ({_shortcuts.Count})");
         catalogPage.Controls.Add(BuildStandardShortcutsPanel());
         sections.TabPages.Add(catalogPage);
 
-        var customPage = CreateTab("Свой ярлык");
+        var customPage = CreateTab("Свой ярлык", "Custom shortcut", "Shaxsiy yorliq");
         customPage.Controls.Add(BuildCustomShortcutPanel());
         sections.TabPages.Add(customPage);
 
@@ -199,35 +232,53 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            ColumnCount = 4,
+            ColumnCount = 2,
             Margin = Padding.Empty
         };
-        filters.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
-        filters.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
-        filters.Controls.Add(CreateFieldLabel("Поиск:"), 0, 0);
+        filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
+        filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+
+        var searchFilter = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            ColumnCount = 2,
+            Margin = new Padding(0, 0, 12, 0)
+        };
+        searchFilter.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        searchFilter.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        searchFilter.Controls.Add(
+            CreateFieldLabel("Поиск:", "Search:", "Qidirish:"),
+            0,
+            0);
         _shortcutSearch.Name = "ShortcutSearch";
         _shortcutSearch.Dock = DockStyle.Fill;
-        _shortcutSearch.PlaceholderText = "Название инструмента";
-        _shortcutSearch.Margin = new Padding(6, 3, 18, 5);
+        _shortcutSearch.Margin = new Padding(6, 3, 0, 5);
         _shortcutSearch.TextChanged += (_, _) => ApplyShortcutFilter();
-        filters.Controls.Add(_shortcutSearch, 1, 0);
-        filters.Controls.Add(CreateFieldLabel("Категория:"), 2, 0);
+        searchFilter.Controls.Add(_shortcutSearch, 1, 0);
+        filters.Controls.Add(searchFilter, 0, 0);
+
+        var categoryFilter = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            ColumnCount = 2,
+            Margin = Padding.Empty
+        };
+        categoryFilter.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        categoryFilter.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        categoryFilter.Controls.Add(
+            CreateFieldLabel("Категория:", "Category:", "Toifa:"),
+            0,
+            0);
         _shortcutCategory.Name = "ShortcutCategory";
         _shortcutCategory.Dock = DockStyle.Fill;
+        _shortcutCategory.AutoSize = false;
         _shortcutCategory.DropDownStyle = ComboBoxStyle.DropDownList;
         _shortcutCategory.Margin = new Padding(6, 3, 0, 5);
-        _shortcutCategory.Items.Add("Все категории");
-        _shortcutCategory.Items.AddRange(
-            _shortcuts
-                .Select(shortcut => shortcut.Category)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Cast<object>()
-                .ToArray());
         _shortcutCategory.SelectedIndexChanged += (_, _) => ApplyShortcutFilter();
-        _shortcutCategory.SelectedIndex = 0;
-        filters.Controls.Add(_shortcutCategory, 3, 0);
+        categoryFilter.Controls.Add(_shortcutCategory, 1, 0);
+        filters.Controls.Add(categoryFilter, 1, 0);
         layout.Controls.Add(filters, 0, 0);
 
         _shortcutList.Name = "ShortcutCatalogList";
@@ -237,7 +288,6 @@ internal sealed class MainForm : Form
         _shortcutList.HorizontalScrollbar = true;
         _shortcutList.ScrollAlwaysVisible = true;
         _shortcutList.BorderStyle = BorderStyle.FixedSingle;
-        _shortcutList.BackColor = Color.White;
         _shortcutList.Margin = new Padding(0, 8, 0, 10);
         _shortcutList.ItemCheck += ShortcutListItemCheck;
         layout.Controls.Add(_shortcutList, 0, 1);
@@ -252,7 +302,7 @@ internal sealed class MainForm : Form
         };
         scopePanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         scopePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        scopePanel.Controls.Add(CreateFieldLabel("Рабочий стол:"), 0, 0);
+        scopePanel.Controls.Add(CreateFieldLabel("Рабочий стол:", "Desktop:", "Ish stoli:"), 0, 0);
         _presetScope.Dock = DockStyle.Fill;
         _presetScope.Margin = new Padding(8, 3, 0, 3);
         _presetScope.SelectedIndexChanged += (_, _) => RefreshShortcutState();
@@ -260,12 +310,22 @@ internal sealed class MainForm : Form
         layout.Controls.Add(scopePanel, 0, 2);
 
         var buttons = CreateActionGrid(5);
-        buttons.Controls.Add(CreateGridButton("Создать выбранные", CreateSelectedShortcuts, primary: true), 0, 0);
-        buttons.Controls.Add(CreateGridButton("Удалить выбранные", RemoveSelectedShortcuts), 1, 0);
-        buttons.Controls.Add(CreateGridButton("Выбрать показанные", (_, _) => SetAllChecked(true)), 2, 0);
-        buttons.Controls.Add(CreateGridButton("Снять показанные", (_, _) => SetAllChecked(false)), 3, 0);
+        buttons.Controls.Add(CreateGridButton(
+            "Создать выбранные", "Create selected", "Tanlanganlarni yaratish",
+            CreateSelectedShortcuts, primary: true), 0, 0);
+        buttons.Controls.Add(CreateGridButton(
+            "Удалить выбранные", "Remove selected", "Tanlanganlarni o‘chirish",
+            RemoveSelectedShortcuts), 1, 0);
+        buttons.Controls.Add(CreateGridButton(
+            "Выбрать показанные", "Select visible", "Ko‘rinadiganlarni tanlash",
+            (_, _) => SetAllChecked(true)), 2, 0);
+        buttons.Controls.Add(CreateGridButton(
+            "Снять показанные", "Clear visible", "Ko‘rinadiganlarni bekor qilish",
+            (_, _) => SetAllChecked(false)), 3, 0);
         buttons.Controls.Add(
-            CreateGridButton("Открыть рабочий стол", (_, _) => OpenDesktop(GetScope(_presetScope))),
+            CreateGridButton(
+                "Открыть рабочий стол", "Open desktop", "Ish stolini ochish",
+                (_, _) => OpenDesktop(GetScope(_presetScope))),
             4,
             0);
         layout.Controls.Add(buttons, 0, 3);
@@ -282,7 +342,10 @@ internal sealed class MainForm : Form
             AutoScroll = true,
             Padding = new Padding(20)
         };
-        var group = CreateGroup("Добавить свой ярлык");
+        var group = CreateGroup(
+            "Добавить свой ярлык",
+            "Create a custom shortcut",
+            "Shaxsiy yorliq yaratish");
         group.Dock = DockStyle.Top;
         group.Height = 430;
         group.Margin = Padding.Empty;
@@ -302,7 +365,8 @@ internal sealed class MainForm : Form
 
         _customName.Name = "CustomShortcutName";
         _customName.Dock = DockStyle.Fill;
-        layout.Controls.Add(BuildLabeledControl("Название:", _customName), 0, 0);
+        layout.Controls.Add(BuildLabeledControl(
+            "Название:", "Name:", "Nomi:", _customName), 0, 0);
 
         var targetPanel = new TableLayoutPanel
         {
@@ -315,12 +379,16 @@ internal sealed class MainForm : Form
         targetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _customTarget.Dock = DockStyle.Fill;
         targetPanel.Controls.Add(_customTarget, 0, 0);
-        targetPanel.Controls.Add(CreateButton("Обзор…", BrowseShortcutTarget), 1, 0);
-        layout.Controls.Add(BuildLabeledControl("Цель:", targetPanel), 0, 1);
+        targetPanel.Controls.Add(CreateButton(
+            "Обзор…", "Browse…", "Tanlash…", BrowseShortcutTarget), 1, 0);
+        layout.Controls.Add(BuildLabeledControl(
+            "Цель:", "Target:", "Maqsad:", targetPanel), 0, 1);
         _customArguments.Name = "CustomShortcutArguments";
         _customArguments.Dock = DockStyle.Fill;
-        layout.Controls.Add(BuildLabeledControl("Аргументы:", _customArguments), 0, 2);
-        layout.Controls.Add(BuildLabeledControl("Рабочий стол:", _customScope), 0, 3);
+        layout.Controls.Add(BuildLabeledControl(
+            "Аргументы:", "Arguments:", "Argumentlar:", _customArguments), 0, 2);
+        layout.Controls.Add(BuildLabeledControl(
+            "Рабочий стол:", "Desktop:", "Ish stoli:", _customScope), 0, 3);
         _customRunAsAdministrator.Margin = new Padding(0, 8, 0, 8);
         layout.Controls.Add(_customRunAsAdministrator, 0, 4);
 
@@ -334,7 +402,9 @@ internal sealed class MainForm : Form
         action.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         action.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         action.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 0);
-        action.Controls.Add(CreateButton("Создать ярлык", CreateCustomShortcut, primary: true), 1, 0);
+        action.Controls.Add(CreateButton(
+            "Создать ярлык", "Create shortcut", "Yorliq yaratish",
+            CreateCustomShortcut, primary: true), 1, 0);
         layout.Controls.Add(action, 0, 5);
 
         group.Controls.Add(layout);
@@ -344,7 +414,10 @@ internal sealed class MainForm : Form
 
     private TabPage BuildWallpaperTab()
     {
-        var tab = CreateTab("Обои для всех");
+        var tab = CreateTab(
+            "Обои для всех",
+            "Shared wallpaper",
+            "Umumiy fon rasmi");
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -370,15 +443,20 @@ internal sealed class MainForm : Form
         controls.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         controls.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        controls.Controls.Add(CreateSectionTitle("Общие обои Windows"), 0, 0);
-        controls.Controls.Add(new Label
+        controls.Controls.Add(CreateSectionTitle(
+            "Общие обои Windows",
+            "Windows wallpaper for every user",
+            "Barcha foydalanuvchilar uchun Windows fon rasmi"), 0, 0);
+        controls.Controls.Add(UiLocalization.Attach(new Label
         {
-            Text = "Изображение копируется в ProgramData, затем настройки применяются ко всем существующим профилям и профилю новых пользователей. Перед изменением создаётся backup реестровых значений.",
+            Name = "Muted",
             AutoSize = true,
             MaximumSize = new Size(500, 0),
-            ForeColor = Color.FromArgb(83, 94, 111),
             Margin = new Padding(0, 6, 0, 18)
-        }, 0, 1);
+        },
+            "Изображение копируется в ProgramData, затем настройки применяются ко всем существующим профилям и профилю новых пользователей. Перед изменением создаётся backup реестровых значений.",
+            "The image is copied to ProgramData and applied to existing profiles and the default profile. Registry values are backed up before any change.",
+            "Rasm ProgramData ichiga nusxalanadi va mavjud hamda yangi foydalanuvchi profillariga qo‘llanadi. O‘zgarishdan oldin reyestr qiymatlari zaxiralanadi."), 0, 1);
 
         var filePanel = new TableLayoutPanel
         {
@@ -391,34 +469,27 @@ internal sealed class MainForm : Form
         filePanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _wallpaperPath.Dock = DockStyle.Fill;
         filePanel.Controls.Add(_wallpaperPath, 0, 0);
-        filePanel.Controls.Add(CreateButton("Выбрать изображение…", BrowseWallpaper), 1, 0);
-        controls.Controls.Add(BuildLabeledControl("Файл обоев:", filePanel), 0, 2);
+        filePanel.Controls.Add(CreateButton(
+            "Выбрать изображение…", "Choose image…", "Rasmni tanlash…",
+            BrowseWallpaper), 1, 0);
+        controls.Controls.Add(BuildLabeledControl(
+            "Файл обоев:", "Wallpaper file:", "Fon rasmi fayli:", filePanel), 0, 2);
 
         _wallpaperLayout.DropDownStyle = ComboBoxStyle.DropDownList;
-        _wallpaperLayout.Items.AddRange(new object[]
-        {
-            "Заполнение",
-            "По размеру",
-            "Растянуть",
-            "По центру",
-            "Замостить",
-            "Панорама"
-        });
-        _wallpaperLayout.SelectedIndex = 0;
         _wallpaperLayout.Width = 220;
-        controls.Controls.Add(BuildLabeledControl("Расположение:", _wallpaperLayout), 0, 3);
+        controls.Controls.Add(BuildLabeledControl(
+            "Расположение:", "Layout:", "Joylashuvi:", _wallpaperLayout), 0, 3);
 
         _applyWallpaperButton.Margin = new Padding(0, 18, 0, 10);
         controls.Controls.Add(_applyWallpaperButton, 0, 4);
 
         _wallpaperResult.AutoSize = true;
         _wallpaperResult.MaximumSize = new Size(520, 0);
-        _wallpaperResult.ForeColor = Color.FromArgb(70, 82, 99);
+        _wallpaperResult.Name = "Muted";
         controls.Controls.Add(_wallpaperResult, 0, 5);
 
         _wallpaperPreview.Dock = DockStyle.Fill;
         _wallpaperPreview.SizeMode = PictureBoxSizeMode.Zoom;
-        _wallpaperPreview.BackColor = Color.FromArgb(226, 232, 240);
         _wallpaperPreview.BorderStyle = BorderStyle.FixedSingle;
         layout.Controls.Add(controls, 0, 0);
         layout.Controls.Add(_wallpaperPreview, 1, 0);
@@ -428,31 +499,41 @@ internal sealed class MainForm : Form
 
     private TabPage BuildWinPTab()
     {
-        var tab = CreateTab("Win+P");
+        var tab = CreateTab("Win+P", "Win+P", "Win+P");
         var card = new TableLayoutPanel
         {
+            Name = "SurfaceCard",
             AutoSize = true,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             Padding = new Padding(26),
             ColumnCount = 1,
-            RowCount = 5,
-            BackColor = Color.White
+            RowCount = 5
         };
-        card.Controls.Add(CreateSectionTitle("Дублирование экранов"), 0, 0);
-        card.Controls.Add(new Label
+        card.Controls.Add(CreateSectionTitle(
+            "Дублирование экранов",
+            "Duplicate displays",
+            "Ekranlarni takrorlash"), 0, 0);
+        card.Controls.Add(UiLocalization.Attach(new Label
         {
-            Text = "Создаёт Win+P.cmd, который сразу включает режим «Дублировать» штатной командой DisplaySwitch.exe /clone. Панель выбора режима не открывается. Скрипт записывается с CRLF и проверяется после сохранения.",
+            Name = "Muted",
             AutoSize = true,
             MaximumSize = new Size(720, 0),
-            ForeColor = Color.FromArgb(83, 94, 111),
             Margin = new Padding(0, 8, 0, 20)
-        }, 0, 1);
-        card.Controls.Add(BuildLabeledControl("Рабочий стол:", _winPScope), 0, 2);
+        },
+            "Создаёт Win+P.cmd, который сразу включает режим «Дублировать» штатной командой DisplaySwitch.exe /clone. Панель выбора режима не открывается. Скрипт записывается с CRLF и проверяется после сохранения.",
+            "Creates Win+P.cmd that immediately selects Duplicate with DisplaySwitch.exe /clone. No projection menu is opened; the CRLF script is verified after writing.",
+            "DisplaySwitch.exe /clone orqali darhol Takrorlash rejimini yoqadigan Win+P.cmd yaratiladi. Proyeksiya menyusi ochilmaydi; CRLF skripti yozilgach tekshiriladi."), 0, 1);
+        card.Controls.Add(BuildLabeledControl(
+            "Рабочий стол:", "Desktop:", "Ish stoli:", _winPScope), 0, 2);
 
         var actions = CreateButtonRow();
         actions.Margin = new Padding(0, 18, 0, 0);
-        actions.Controls.Add(CreateButton("Создать «Дублировать»", CreateWinPLauncher, primary: true));
-        actions.Controls.Add(CreateButton("Открыть рабочий стол", (_, _) => OpenDesktop(GetScope(_winPScope))));
+        actions.Controls.Add(CreateButton(
+            "Создать «Дублировать»", "Create Duplicate launcher", "Takrorlash yorlig‘ini yaratish",
+            CreateWinPLauncher, primary: true));
+        actions.Controls.Add(CreateButton(
+            "Открыть рабочий стол", "Open desktop", "Ish stolini ochish",
+            (_, _) => OpenDesktop(GetScope(_winPScope))));
         card.Controls.Add(actions, 0, 3);
 
         var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24), AutoScroll = true };
@@ -467,7 +548,7 @@ internal sealed class MainForm : Form
         List<ShortcutDefinition> selected = GetSelectedShortcuts();
         if (selected.Count == 0)
         {
-            SetStatus("Ничего не выбрано.", isError: true);
+            SetStatus(T("Ничего не выбрано.", "Nothing is selected.", "Hech narsa tanlanmagan."), isError: true);
             return;
         }
 
@@ -499,13 +580,17 @@ internal sealed class MainForm : Form
             }
             catch (Exception ex)
             {
-                errors.Add($"{shortcut.DisplayName}: {ex.Message}");
+                errors.Add($"{UiLocalization.CatalogText(shortcut.DisplayName)}: {ex.Message}");
             }
         }
 
         RefreshDesktop();
         RefreshShortcutState();
-        ShowOperationResult("Создано ярлыков", created, errors, backups);
+        ShowOperationResult(
+            T("Создано ярлыков", "Shortcuts created", "Yaratilgan yorliqlar"),
+            created,
+            errors,
+            backups);
     }
 
     private void RemoveSelectedShortcuts(object? sender, EventArgs e)
@@ -513,14 +598,17 @@ internal sealed class MainForm : Form
         List<ShortcutDefinition> selected = GetSelectedShortcuts();
         if (selected.Count == 0)
         {
-            SetStatus("Ничего не выбрано.", isError: true);
+            SetStatus(T("Ничего не выбрано.", "Nothing is selected.", "Hech narsa tanlanmagan."), isError: true);
             return;
         }
 
         if (MessageBox.Show(
                 this,
-                $"Удалить выбранные ярлыки ({selected.Count})?",
-                "Подтверждение удаления",
+                T(
+                    $"Удалить выбранные ярлыки ({selected.Count})?",
+                    $"Remove the selected shortcuts ({selected.Count})?",
+                    $"Tanlangan yorliqlar o‘chirilsinmi ({selected.Count})?"),
+                T("Подтверждение удаления", "Confirm removal", "O‘chirishni tasdiqlash"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes)
@@ -549,13 +637,16 @@ internal sealed class MainForm : Form
             }
             catch (Exception ex)
             {
-                errors.Add($"{shortcut.DisplayName}: {ex.Message}");
+                errors.Add($"{UiLocalization.CatalogText(shortcut.DisplayName)}: {ex.Message}");
             }
         }
 
         RefreshDesktop();
         RefreshShortcutState();
-        ShowOperationResult("Удалено ярлыков", removed, errors);
+        ShowOperationResult(
+            T("Удалено ярлыков", "Shortcuts removed", "O‘chirilgan yorliqlar"),
+            removed,
+            errors);
     }
 
     private void CreateCustomShortcut(object? sender, EventArgs e)
@@ -578,8 +669,9 @@ internal sealed class MainForm : Form
             RefreshDesktop();
             string backup = result.BackupPath is null
                 ? string.Empty
-                : $" Backup исходного файла: {result.BackupPath}";
-            SetStatus($"Ярлык создан: {result.Path}.{backup}");
+                : $" {T("Backup исходного файла", "Original file backup", "Asl fayl zaxirasi")}: {result.BackupPath}";
+            SetStatus(
+                $"{T("Ярлык создан", "Shortcut created", "Yorliq yaratildi")}: {result.Path}.{backup}");
         }
         catch (Exception ex)
         {
@@ -592,14 +684,20 @@ internal sealed class MainForm : Form
         string path = _wallpaperPath.Text.Trim();
         if (string.IsNullOrWhiteSpace(path))
         {
-            ShowError("Сначала выберите файл обоев.");
+            ShowError(T(
+                "Сначала выберите файл обоев.",
+                "Choose a wallpaper image first.",
+                "Avval fon rasmi faylini tanlang."));
             return;
         }
 
         if (MessageBox.Show(
                 this,
-                "Настройки обоев будут изменены для всех существующих и новых пользователей. Перед изменением будет создан backup. Продолжить?",
-                "Применить общие обои",
+                T(
+                    "Настройки обоев будут изменены для всех существующих и новых пользователей. Перед изменением будет создан backup. Продолжить?",
+                    "Wallpaper settings will change for all existing and new users. A backup will be created first. Continue?",
+                    "Fon rasmi sozlamalari barcha mavjud va yangi foydalanuvchilar uchun o‘zgaradi. Avval zaxira yaratiladi. Davom etilsinmi?"),
+                T("Применить общие обои", "Apply shared wallpaper", "Umumiy fon rasmini qo‘llash"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes)
@@ -608,7 +706,10 @@ internal sealed class MainForm : Form
         }
 
         _applyWallpaperButton.Enabled = false;
-        SetStatus("Настройки профилей применяются…");
+        SetStatus(T(
+            "Настройки профилей применяются…",
+            "Applying profile settings…",
+            "Profil sozlamalari qo‘llanmoqda…"));
         try
         {
             WallpaperLayout layout = GetWallpaperLayout();
@@ -617,12 +718,13 @@ internal sealed class MainForm : Form
 
             string skipped = result.SkippedProfiles.Count == 0
                 ? string.Empty
-                : $"\nПропущено записей без NTUSER.DAT: {result.SkippedProfiles.Count}.";
+                : $"\n{T("Пропущено записей без NTUSER.DAT", "Profiles without NTUSER.DAT skipped", "NTUSER.DAT yo‘q profillar o‘tkazib yuborildi")}: {result.SkippedProfiles.Count}.";
             _wallpaperResult.Text =
-                $"Настроено профилей: {result.ProfileCount}.\n" +
-                $"Файл: {result.ManagedWallpaperPath}\n" +
-                $"Backup: {result.BackupPath}{skipped}";
-            SetStatus($"Обои применены. Настроено профилей: {result.ProfileCount}.");
+                $"{T("Настроено профилей", "Profiles configured", "Sozlangan profillar")}: {result.ProfileCount}.\n" +
+                $"{T("Файл", "File", "Fayl")}: {result.ManagedWallpaperPath}\n" +
+                $"{T("Backup", "Backup", "Zaxira")}: {result.BackupPath}{skipped}";
+            SetStatus(
+                $"{T("Обои применены. Настроено профилей", "Wallpaper applied. Profiles configured", "Fon rasmi qo‘llandi. Sozlangan profillar")}: {result.ProfileCount}.");
         }
         catch (Exception ex)
         {
@@ -653,8 +755,11 @@ internal sealed class MainForm : Form
 
             LauncherCreateResult result = WinPLauncherService.Create(scope, overwrite);
             RefreshDesktop();
-            string backup = result.BackupPath is null ? string.Empty : $" Backup: {result.BackupPath}";
-            SetStatus($"Скрипт дублирования экранов создан: {result.Path}.{backup}");
+            string backup = result.BackupPath is null
+                ? string.Empty
+                : $" {T("Backup", "Backup", "Zaxira")}: {result.BackupPath}";
+            SetStatus(
+                $"{T("Скрипт дублирования экранов создан", "Duplicate-display script created", "Ekranni takrorlash skripti yaratildi")}: {result.Path}.{backup}");
         }
         catch (Exception ex)
         {
@@ -666,9 +771,15 @@ internal sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Выберите программу или файл",
+            Title = T(
+                "Выберите программу или файл",
+                "Choose a program or file",
+                "Dastur yoki faylni tanlang"),
             CheckFileExists = true,
-            Filter = "Программы и файлы|*.exe;*.com;*.bat;*.cmd;*.msc;*.cpl;*.ps1;*.url|Все файлы|*.*"
+            Filter = T(
+                "Программы и файлы|*.exe;*.com;*.bat;*.cmd;*.msc;*.cpl;*.ps1;*.url|Все файлы|*.*",
+                "Programs and files|*.exe;*.com;*.bat;*.cmd;*.msc;*.cpl;*.ps1;*.url|All files|*.*",
+                "Dasturlar va fayllar|*.exe;*.com;*.bat;*.cmd;*.msc;*.cpl;*.ps1;*.url|Barcha fayllar|*.*")
         };
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
@@ -684,9 +795,12 @@ internal sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Выберите изображение",
+            Title = T("Выберите изображение", "Choose an image", "Rasmni tanlang"),
             CheckFileExists = true,
-            Filter = "Изображения|*.jpg;*.jpeg;*.png;*.bmp|Все файлы|*.*"
+            Filter = T(
+                "Изображения|*.jpg;*.jpeg;*.png;*.bmp|Все файлы|*.*",
+                "Images|*.jpg;*.jpeg;*.png;*.bmp|All files|*.*",
+                "Rasmlar|*.jpg;*.jpeg;*.png;*.bmp|Barcha fayllar|*.*")
         };
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
@@ -701,11 +815,15 @@ internal sealed class MainForm : Form
             _wallpaperPreview.Image = preview;
             previous?.Dispose();
             _wallpaperPath.Text = dialog.FileName;
-            SetStatus("Изображение выбрано. Общесистемные настройки ещё не изменены.");
+            SetStatus(T(
+                "Изображение выбрано. Общесистемные настройки ещё не изменены.",
+                "Image selected. System-wide settings have not changed yet.",
+                "Rasm tanlandi. Tizim sozlamalari hali o‘zgartirilmadi."));
         }
         catch (Exception ex)
         {
-            ShowError($"Не удалось открыть изображение: {ex.Message}");
+            ShowError(
+                $"{T("Не удалось открыть изображение", "Could not open the image", "Rasmni ochib bo‘lmadi")}: {ex.Message}");
         }
     }
 
@@ -717,7 +835,8 @@ internal sealed class MainForm : Form
             string desktop = DesktopPathProvider.GetPath(scope);
             int existing = _shortcuts.Count(
                 shortcut => File.Exists(Path.Combine(desktop, ShortcutService.NormalizeShortcutFileName(shortcut.FileName))));
-            SetStatus($"На выбранном рабочем столе найдено системных ярлыков: {existing} из {_shortcuts.Count}.");
+            SetStatus(
+                $"{T("На выбранном рабочем столе найдено системных ярлыков", "Admin shortcuts found on the selected desktop", "Tanlangan ish stolida topilgan administrator yorliqlari")}: {existing} {T("из", "of", "ta")} {_shortcuts.Count}.");
         }
         catch (Exception ex)
         {
@@ -736,7 +855,7 @@ internal sealed class MainForm : Form
         string search = _shortcutSearch.Text.Trim();
         string? category = _shortcutCategory.SelectedIndex <= 0
             ? null
-            : _shortcutCategory.SelectedItem?.ToString();
+            : _shortcutCategories[_shortcutCategory.SelectedIndex - 1];
 
         _updatingShortcutList = true;
         try
@@ -747,8 +866,10 @@ internal sealed class MainForm : Form
             {
                 bool categoryMatches = category is null ||
                     shortcut.Category.Equals(category, StringComparison.OrdinalIgnoreCase);
+                string localizedName = UiLocalization.CatalogText(shortcut.DisplayName);
                 bool searchMatches = search.Length == 0 ||
                     shortcut.DisplayName.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+                    localizedName.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
                     shortcut.Description.Contains(search, StringComparison.CurrentCultureIgnoreCase);
                 if (categoryMatches && searchMatches)
                 {
@@ -862,12 +983,15 @@ internal sealed class MainForm : Form
     {
         if (errors.Count == 0)
         {
-            string backups = backupCount == 0 ? string.Empty : $" Backup-файлов: {backupCount}.";
+            string backups = backupCount == 0
+                ? string.Empty
+                : $" {T("Backup-файлов", "Backup files", "Zaxira fayllari")}: {backupCount}.";
             SetStatus($"{label}: {count}.{backups}");
             return;
         }
 
-        ShowError($"{label}: {count}. Ошибки:\n\n{string.Join("\n", errors)}");
+        ShowError(
+            $"{label}: {count}. {T("Ошибки", "Errors", "Xatolar")}:\n\n{string.Join("\n", errors)}");
     }
 
     private bool ConfirmOverwrite(int count)
@@ -875,9 +999,15 @@ internal sealed class MainForm : Form
         return MessageBox.Show(
             this,
             count == 1
-                ? "Файл уже существует. Заменить его?"
-                : $"Уже существует файлов: {count}. Заменить их?",
-            "Подтверждение замены",
+                ? T(
+                    "Файл уже существует. Заменить его?",
+                    "The file already exists. Replace it?",
+                    "Fayl allaqachon mavjud. Almashtirilsinmi?")
+                : T(
+                    $"Уже существует файлов: {count}. Заменить их?",
+                    $"{count} files already exist. Replace them?",
+                    $"{count} ta fayl mavjud. Ular almashtirilsinmi?"),
+            T("Подтверждение замены", "Confirm replacement", "Almashtirishni tasdiqlash"),
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2) == DialogResult.Yes;
@@ -885,15 +1015,20 @@ internal sealed class MainForm : Form
 
     private void SetStatus(string text, bool isError = false)
     {
+        _statusIsError = isError;
         _statusLabel.Text = text;
+        _statusLabel.Name = isError ? "Error" : "Success";
         _statusLabel.ForeColor = isError
-            ? Color.FromArgb(178, 38, 38)
-            : Color.FromArgb(45, 105, 63);
+            ? ThemePalette.Current.Danger
+            : ThemePalette.Current.Success;
     }
 
     private void ShowError(string message)
     {
-        SetStatus("Операция завершилась с ошибкой.", isError: true);
+        SetStatus(T(
+            "Операция завершилась с ошибкой.",
+            "The operation failed.",
+            "Amal xato bilan yakunlandi."), isError: true);
         MessageBox.Show(this, message, "Windows Admin Center", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
@@ -916,43 +1051,213 @@ internal sealed class MainForm : Form
         return combo.SelectedIndex == 1 ? DesktopScope.AllUsers : DesktopScope.CurrentUser;
     }
 
-    private static ComboBox CreateScopeCombo(bool defaultToAllUsers = false)
+    private void InitializeSelectors()
     {
-        var combo = new ComboBox
+        UiLocalization.Attach(
+            _customRunAsAdministrator,
+            "Запускать от администратора",
+            "Run as administrator",
+            "Administrator sifatida ishga tushirish");
+    }
+
+    private void ChangeLanguage(object? sender, EventArgs e)
+    {
+        if (_updatingAppearanceSelectors)
+        {
+            return;
+        }
+
+        try
+        {
+            AppSettingsService.SetLanguage(_languageSelector.SelectedLanguage);
+        }
+        catch (Exception ex)
+        {
+            ShowError(
+                $"{T("Не удалось сохранить язык интерфейса", "Could not save the interface language", "Interfeys tilini saqlab bo‘lmadi")}: {ex.Message}");
+            ApplyLocalizationAndTheme();
+        }
+    }
+
+    private void ToggleTheme(object? sender, EventArgs e)
+    {
+        try
+        {
+            AppTheme next = AppSettingsService.Current.Theme == AppTheme.Light
+                ? AppTheme.Dark
+                : AppTheme.Light;
+            AppSettingsService.SetTheme(next);
+        }
+        catch (Exception ex)
+        {
+            ShowError(
+                $"{T("Не удалось сохранить тему", "Could not save the theme", "Mavzuni saqlab bo‘lmadi")}: {ex.Message}");
+        }
+    }
+
+    private void AppearanceChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(ApplyLocalizationAndTheme);
+            return;
+        }
+
+        ApplyLocalizationAndTheme();
+    }
+
+    private void ApplyLocalizationAndTheme()
+    {
+        _updatingAppearanceSelectors = true;
+        try
+        {
+            _languageSelector.SelectedLanguage = AppSettingsService.Current.Language;
+            UiLocalization.Apply(this);
+            _shortcutSearch.PlaceholderText = T(
+                "Название инструмента",
+                "Tool name",
+                "Vosita nomi");
+            RefreshScopeCombo(_presetScope, defaultIndex: 0);
+            RefreshScopeCombo(_customScope, defaultIndex: 0);
+            RefreshScopeCombo(_winPScope, defaultIndex: 1);
+            RefreshWallpaperLayouts();
+            RefreshCategoryItems();
+
+            string themeTip = AppSettingsService.Current.Theme == AppTheme.Light
+                ? T("Включить тёмную тему", "Switch to dark theme", "Qorong‘i mavzuni yoqish")
+                : T("Включить светлую тему", "Switch to light theme", "Yorug‘ mavzuni yoqish");
+            _themeToggle.AccessibleName = themeTip;
+            _toolTip.SetToolTip(_themeToggle, themeTip);
+        }
+        finally
+        {
+            _updatingAppearanceSelectors = false;
+        }
+
+        ThemeManager.Apply(this);
+        _statusLabel.ForeColor = _statusIsError
+            ? ThemePalette.Current.Danger
+            : ThemePalette.Current.Success;
+        ApplyShortcutFilter();
+        PerformLayout();
+    }
+
+    private static void RefreshScopeCombo(ComboBox combo, int defaultIndex)
+    {
+        int selected = combo.SelectedIndex >= 0 ? combo.SelectedIndex : defaultIndex;
+        combo.BeginUpdate();
+        try
+        {
+            combo.Items.Clear();
+            combo.Items.AddRange(new object[]
+            {
+                T("Текущий пользователь", "Current user", "Joriy foydalanuvchi"),
+                T(
+                    "Все пользователи (общий рабочий стол)",
+                    "All users (public desktop)",
+                    "Barcha foydalanuvchilar (umumiy ish stoli)")
+            });
+            combo.SelectedIndex = Math.Clamp(selected, 0, combo.Items.Count - 1);
+        }
+        finally
+        {
+            combo.EndUpdate();
+        }
+    }
+
+    private void RefreshWallpaperLayouts()
+    {
+        int selected = _wallpaperLayout.SelectedIndex >= 0
+            ? _wallpaperLayout.SelectedIndex
+            : 0;
+        _wallpaperLayout.BeginUpdate();
+        try
+        {
+            _wallpaperLayout.Items.Clear();
+            _wallpaperLayout.Items.AddRange(new object[]
+            {
+                T("Заполнение", "Fill", "To‘ldirish"),
+                T("По размеру", "Fit", "Sig‘dirish"),
+                T("Растянуть", "Stretch", "Cho‘zish"),
+                T("По центру", "Center", "Markazda"),
+                T("Замостить", "Tile", "Plitka"),
+                T("Панорама", "Span", "Panorama")
+            });
+            _wallpaperLayout.SelectedIndex = Math.Clamp(
+                selected,
+                0,
+                _wallpaperLayout.Items.Count - 1);
+        }
+        finally
+        {
+            _wallpaperLayout.EndUpdate();
+        }
+    }
+
+    private void RefreshCategoryItems()
+    {
+        int selected = _shortcutCategory.SelectedIndex >= 0
+            ? _shortcutCategory.SelectedIndex
+            : 0;
+        _shortcutCategory.BeginUpdate();
+        try
+        {
+            _shortcutCategory.Items.Clear();
+            _shortcutCategory.Items.Add(
+                T("Все категории", "All categories", "Barcha toifalar"));
+            _shortcutCategory.Items.AddRange(
+                _shortcutCategories
+                    .Select(UiLocalization.CatalogText)
+                    .Cast<object>()
+                    .ToArray());
+            _shortcutCategory.SelectedIndex = Math.Clamp(
+                selected,
+                0,
+                _shortcutCategory.Items.Count - 1);
+        }
+        finally
+        {
+            _shortcutCategory.EndUpdate();
+        }
+    }
+
+    private static string T(string russian, string english, string uzbek) =>
+        UiLocalization.Text(russian, english, uzbek);
+
+    private static ComboBox CreateScopeCombo()
+    {
+        return new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
             Width = 300
         };
-        combo.Items.AddRange(new object[]
-        {
-            "Текущий пользователь",
-            "Все пользователи (общий рабочий стол)"
-        });
-        combo.SelectedIndex = defaultToAllUsers ? 1 : 0;
-        return combo;
     }
 
-    private static TabPage CreateTab(string text)
+    private static TabPage CreateTab(string russian, string english, string uzbek)
     {
-        return new TabPage
+        return UiLocalization.Attach(new TabPage
         {
-            Text = text,
-            BackColor = Color.FromArgb(244, 247, 251),
             UseVisualStyleBackColor = false
-        };
+        }, russian, english, uzbek);
     }
 
-    private static GroupBox CreateGroup(string text)
+    private static GroupBox CreateGroup(
+        string russian,
+        string english,
+        string uzbek)
     {
-        return new GroupBox
+        return UiLocalization.Attach(new GroupBox
         {
-            Text = text,
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI Semibold", 10F),
-            ForeColor = Color.FromArgb(38, 48, 63),
             Padding = new Padding(8),
             Margin = new Padding(0, 0, 0, 10)
-        };
+        }, russian, english, uzbek);
     }
 
     private static FlowLayoutPanel CreateButtonRow()
@@ -988,9 +1293,14 @@ internal sealed class MainForm : Form
         return grid;
     }
 
-    private static Button CreateGridButton(string text, EventHandler onClick, bool primary = false)
+    private static Button CreateGridButton(
+        string russian,
+        string english,
+        string uzbek,
+        EventHandler onClick,
+        bool primary = false)
     {
-        Button button = CreateButton(text, onClick, primary);
+        Button button = CreateButton(russian, english, uzbek, onClick, primary);
         button.Dock = DockStyle.Fill;
         button.AutoSize = false;
         button.Margin = new Padding(4, 2, 4, 2);
@@ -998,38 +1308,28 @@ internal sealed class MainForm : Form
         return button;
     }
 
-    private static Button CreateButton(string text, EventHandler onClick, bool primary = false)
+    private static Button CreateButton(
+        string russian,
+        string english,
+        string uzbek,
+        EventHandler onClick,
+        bool primary = false)
     {
-        var button = new Button
+        var button = UiLocalization.Attach(new ModernButton
         {
-            Text = text,
-            AutoSize = true,
-            MinimumSize = new Size(0, 38),
-            Padding = new Padding(14, 3, 14, 3),
-            FlatStyle = FlatStyle.Flat,
-            Cursor = Cursors.Hand,
+            Kind = primary ? ModernButtonKind.Primary : ModernButtonKind.Secondary,
             Margin = new Padding(0, 0, 10, 6),
-            UseVisualStyleBackColor = false
-        };
-
-        if (primary)
-        {
-            button.BackColor = Color.FromArgb(35, 102, 209);
-            button.ForeColor = Color.White;
-            button.FlatAppearance.BorderColor = button.BackColor;
-        }
-        else
-        {
-            button.BackColor = Color.White;
-            button.ForeColor = Color.FromArgb(42, 49, 61);
-            button.FlatAppearance.BorderColor = Color.FromArgb(181, 190, 203);
-        }
+        }, russian, english, uzbek);
 
         button.Click += onClick;
         return button;
     }
 
-    private static Control BuildLabeledControl(string label, Control control)
+    private static Control BuildLabeledControl(
+        string russian,
+        string english,
+        string uzbek,
+        Control control)
     {
         var layout = new TableLayoutPanel
         {
@@ -1039,40 +1339,36 @@ internal sealed class MainForm : Form
             RowCount = 2,
             Margin = new Padding(0, 0, 0, 8)
         };
-        layout.Controls.Add(new Label
+        layout.Controls.Add(UiLocalization.Attach(new Label
         {
-            Text = label,
+            Name = "Muted",
             AutoSize = true,
-            ForeColor = Color.FromArgb(67, 78, 95),
             Margin = new Padding(0, 0, 0, 4)
-        }, 0, 0);
+        }, russian, english, uzbek), 0, 0);
         control.Margin = Padding.Empty;
         layout.Controls.Add(control, 0, 1);
         return layout;
     }
 
-    private static Label CreateFieldLabel(string text)
+    private static Label CreateFieldLabel(string russian, string english, string uzbek)
     {
-        return new Label
+        return UiLocalization.Attach(new Label
         {
-            Text = text,
+            Name = "Muted",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
-            ForeColor = Color.FromArgb(67, 78, 95),
             Margin = new Padding(4, 8, 4, 4)
-        };
+        }, russian, english, uzbek);
     }
 
-    private static Label CreateSectionTitle(string text)
+    private static Label CreateSectionTitle(string russian, string english, string uzbek)
     {
-        return new Label
+        return UiLocalization.Attach(new Label
         {
-            Text = text,
             AutoSize = true,
             Font = new Font("Segoe UI Semibold", 16F),
-            ForeColor = Color.FromArgb(31, 41, 56),
             Margin = Padding.Empty
-        };
+        }, russian, english, uzbek);
     }
 
     private static void RefreshDesktop()
@@ -1085,7 +1381,9 @@ internal sealed class MainForm : Form
 
     private sealed record ShortcutListItem(ShortcutDefinition Definition)
     {
-        public override string ToString() => $"[{Definition.Category}]  {Definition.DisplayName}";
+        public override string ToString() =>
+            $"[{UiLocalization.CatalogText(Definition.Category)}]  " +
+            UiLocalization.CatalogText(Definition.DisplayName);
     }
 
     private static class NativeMethods

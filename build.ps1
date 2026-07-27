@@ -22,4 +22,15 @@ dotnet publish $project `
 Copy-Item (Join-Path $PSScriptRoot "Start-WindowsAdminShortcuts.bat") `
     (Join-Path $output "Start-WindowsAdminShortcuts.bat")
 
+$licensePath = Join-Path $output "LICENSE.txt"
+if (-not (Test-Path $licensePath)) {
+    throw "LICENSE.txt отсутствует в готовом пакете."
+}
+
+$license = [IO.File]::ReadAllText($licensePath)
+if (-not $license.Contains("AS IS") -or -not $license.Contains("WITHOUT WARRANTY")) {
+    throw "Лицензия в пакете не содержит обязательного условия AS IS."
+}
+
 Write-Host "Готово: $output\WindowsAdminShortcuts.exe" -ForegroundColor Green
+Write-Host "Комплект: EXE, BAT и LICENSE.txt" -ForegroundColor Green

@@ -43,10 +43,17 @@ jobs:
           -p:EnableCompressionInSingleFile=true
           --output dist
 
-      - name: Add and verify launcher BAT
+      - name: Add and verify package files
         shell: pwsh
         run: |
           Copy-Item Start-WindowsAdminShortcuts.bat dist/Start-WindowsAdminShortcuts.bat
+          if (-not (Test-Path dist/LICENSE.txt)) {
+            throw "LICENSE.txt is missing from the published package."
+          }
+          $license = [IO.File]::ReadAllText("dist/LICENSE.txt")
+          if (-not $license.Contains("AS IS") -or -not $license.Contains("WITHOUT WARRANTY")) {
+            throw "Published license does not contain the AS IS warranty disclaimer."
+          }
           $bytes = [IO.File]::ReadAllBytes("dist/Start-WindowsAdminShortcuts.bat")
           for ($i = 0; $i -lt $bytes.Length; $i++) {
             if ($bytes[$i] -eq 10 -and ($i -eq 0 -or $bytes[$i - 1] -ne 13)) {
@@ -61,4 +68,5 @@ jobs:
           path: |
             dist/WindowsAdminShortcuts.exe
             dist/Start-WindowsAdminShortcuts.bat
+            dist/LICENSE.txt
           if-no-files-found: error
