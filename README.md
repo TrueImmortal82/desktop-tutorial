@@ -66,4 +66,4 @@ dotnet run --project tests\WindowsAdminShortcuts.Tests\WindowsAdminShortcuts.Tes
 
 ## Автор
 
-Владислав Наречев. Все права сохранены за автором.
+True Immortal. Все права сохранены за автором.
