@@ -11,7 +11,7 @@
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
       <supportedOS Id="{4f476546-9379-4f87-80ab-ec6d11497f50}" />
-      <supportedOS Id="{1e91b883-46a9-4c58-8d4a-6f0d8a3b5c1f}" />
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
     </application>
   </compatibility>
 </assembly>
