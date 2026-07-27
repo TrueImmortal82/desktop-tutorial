@@ -512,7 +512,7 @@ static void AssertNoInteractiveControlOverlaps(Control root)
 {
     Control[] interactive = FindControls<Control>(root)
         .Where(control =>
-            control.Visible &&
+            IsEffectivelyVisible(control) &&
             control is Button or CheckBox or CheckedListBox or ComboBox or TextBox)
         .ToArray();
     for (int firstIndex = 0; firstIndex < interactive.Length; firstIndex++)
@@ -524,11 +524,37 @@ static void AssertNoInteractiveControlOverlaps(Control root)
             if (first.IntersectsWith(second))
             {
                 throw new InvalidOperationException(
-                    $"Interactive controls overlap: '{interactive[firstIndex].Text}' and " +
-                    $"'{interactive[secondIndex].Text}'.");
+                    $"Interactive controls overlap: {DescribeControl(interactive[firstIndex], first)} and " +
+                    $"{DescribeControl(interactive[secondIndex], second)}.");
             }
         }
     }
+}
+
+static bool IsEffectivelyVisible(Control control)
+{
+    for (Control? current = control; current is not null; current = current.Parent)
+    {
+        if (!current.Visible)
+        {
+            return false;
+        }
+
+        if (current is TabPage page &&
+            page.Parent is TabControl tabs &&
+            tabs.SelectedTab != page)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static string DescribeControl(Control control, Rectangle bounds)
+{
+    string name = string.IsNullOrWhiteSpace(control.Name) ? "<unnamed>" : control.Name;
+    return $"{control.GetType().Name} '{name}'/'{control.Text}' at {bounds}";
 }
 
 static void SaveWindowScreenshot(Form form, string path)
