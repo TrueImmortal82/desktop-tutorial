@@ -1,0 +1,47 @@
+name: Build Windows application
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore src/WindowsAdminShortcuts/WindowsAdminShortcuts.csproj
+
+      - name: Build
+        run: dotnet build src/WindowsAdminShortcuts/WindowsAdminShortcuts.csproj --configuration Release --no-restore
+
+      - name: Publish single-file EXE
+        run: >-
+          dotnet publish src/WindowsAdminShortcuts/WindowsAdminShortcuts.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          --output dist
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindowsAdminShortcuts-win-x64
+          path: dist/WindowsAdminShortcuts.exe
+          if-no-files-found: error
